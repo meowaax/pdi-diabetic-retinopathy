@@ -1,0 +1,16 @@
+# dados e artefatos pesados
+data/
+*.pt
+*.pth
+*.ckpt
+results/*
+!results/.gitkeep
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# sistema
+.DS_Store
