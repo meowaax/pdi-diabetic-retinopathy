@@ -6,6 +6,8 @@ data/
 results/*
 !results/.gitkeep
 !results/mask_availability.csv
+!results/eda/
+!results/eda/*
 
 # python
 .venv/

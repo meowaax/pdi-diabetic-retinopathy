@@ -1,0 +1,5 @@
+cls,imagens,frac_fov_media_pct,componentes_mediana,componentes_total,area_mediana_px,area_max_px,pct_dos_pixels_de_lesao
+MA,81,0.15,35.0,3497,234.0,2231,4.722
+HE,80,1.483,17.5,1900,1607.5,1256545,45.974
+EX,81,1.301,82.0,11642,217.0,376764,40.836
+SE,40,0.547,3.0,150,8653.0,60776,8.468

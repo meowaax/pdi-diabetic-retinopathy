@@ -60,7 +60,8 @@ def load_masks(image_id: str, split: str, shape: tuple[int, int], root: Path = R
         if m is None:
             raise IOError(f"não foi possível ler {p}")
         if m.ndim == 3:
-            m = m.max(axis=2)
+            # IDRiD_81_EX.tif é BGRA (lesão no canal vermelho, alfa = 255 em tudo): descartar o alfa
+            m = m[..., :3].max(axis=2)
         if m.shape != shape:
             raise ValueError(f"{p.name}: formato {m.shape} difere da imagem {shape}")
         masks[k] = (m > 0).astype(np.uint8)
