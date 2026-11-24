@@ -153,6 +153,17 @@ A perda inicial combina Binary Cross-Entropy e Dice Loss, com máscara de valida
 
 Os valores são pontos de partida. Memória disponível e desempenho na validação orientam os ajustes. O VGG16 é mais pesado que o VGG11 (mais parâmetros e memória), então o batch size pode precisar ficar no limite inferior da faixa.
 
+### Data augmentation (fixa em todos os experimentos)
+
+A combinação de augmentation vem do artigo de referência (CBIC 2025), que testou técnicas isoladas e combinadas para segmentação de exsudatos duros no IDRiD com UNet++. A melhor configuração foi **Horizontal Flip + ElasticTransform + RandomBrightnessContrast** com encoder VGG16 (IoU 0,510; Dice 0,676). Combinações com RGBShift pioraram, e ShiftScaleRotate foi a pior técnica isolada.
+
+- A mesma combinação é aplicada em E1 a E5. A única variável entre E1, E2 e E3 é o pré-processamento.
+- A busca por combinações de augmentation não é reproduzida; o resultado do artigo é herdado.
+- Ordem fixa: augmentation sobre o RGB original e, depois, o pré-processamento (CLAHE ou canal verde).
+- RandomBrightnessContrast e CLAHE atuam sobre contraste e podem se sobrepor. Isso é discutido como limitação.
+- O artigo segmenta só EX. Para MA (13 a 2.231 px), é preciso verificar que a ElasticTransform mantém as máscaras alinhadas e não as apaga. Qualquer desvio do artigo fica registrado.
+- Parâmetros de treino do artigo: 100 épocas, early stopping com paciência 10, batch 6, learning rate 0,001.
+
 ### Etapa 4: Pós-processamento complementar
 
 - Abertura e fechamento morfológico.
