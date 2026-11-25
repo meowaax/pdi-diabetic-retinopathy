@@ -205,7 +205,18 @@ O indicador principal é o Dice por classe, além do macro-Dice (peso igual às 
 - A combinação produz resultado melhor? Comparar E2, E3 e E4, se realizado.
 - O pós-processamento melhora as máscaras? Comparar a melhor configuração sem e com pós-processamento.
 
-Manter constantes arquitetura, encoder, divisão dos dados, estratégia de treinamento e critérios de avaliação. Quando viável, repetir os experimentos com mais de uma semente aleatória e relatar a variabilidade.
+Manter constantes arquitetura, encoder, divisão dos dados, estratégia de treinamento e critérios de avaliação.
+
+### Protocolo de validação
+
+Dois usos distintos das 54 imagens oficiais de treino, ambos definidos em `configs/split.csv` e estratificados por disponibilidade de SE e carga de lesão:
+
+1. **Divisão de desenvolvimento (42 treino / 12 validação).** Usada para os ajustes que precisam de um único treino por configuração: hiperparâmetros do baseline (E1) e a sensibilidade aos parâmetros do CLAHE (8 treinos). Nada é ajustado no teste.
+2. **Validação cruzada em 5 dobras (cerca de 43 treino / 11 validação por dobra).** Usada para a comparação final E1, E2, E3 e, se feito, E4, com hiperparâmetros e parâmetros do CLAHE já congelados. Cada dobra tem 5 ou 6 imagens com SE. A variabilidade entre dobras substitui a repetição com várias sementes.
+
+O conjunto de teste oficial (27 imagens) não participa de nenhuma escolha. Cada modelo de dobra é avaliado nele ao final e reportam-se média e desvio-padrão entre as 5 dobras. Os parâmetros do CLAHE são escolhidos na divisão de desenvolvimento, cujas 12 imagens de validação também aparecem em dobras da validação cruzada. Isso pode favorecer levemente o CLAHE e é registrado como limitação.
+
+Estimativa: cerca de 23 a 28 treinos no total (8 de sensibilidade do CLAHE, 1 a 2 de ajuste do baseline e 15 a 20 da validação cruzada). O custo local é proibitivo; a execução usa GPU (Colab ou compartilhada).
 
 ---
 
