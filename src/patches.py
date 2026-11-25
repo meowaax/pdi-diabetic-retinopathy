@@ -9,7 +9,8 @@ Os .npy são abertos com mmap, então só os patches pedidos vão para a memóri
 Treino ('train'): patches aleatórios; com probabilidade `lesion_prob` o patch é centrado (com jitter)
 num pixel de lesão de uma classe sorteada entre as classes com anotação e lesão; caso contrário, uniforme
 dentro do FOV. Avaliação ('eval'): grade determinística com `stride`, descartando patches com FOV < `min_fov`.
-Augmentation e pré-processamento entram como funções (ver #8 e #6) e atuam no patch, nessa ordem.
+Augmentation e pré-processamento entram como funções (ver #8 e #6) e atuam no patch, nessa ordem:
+primeiro `transform` (augmentation sobre o RGB), depois `preprocess` (src/preprocess.py).
 """
 from pathlib import Path
 

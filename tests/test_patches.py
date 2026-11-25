@@ -71,3 +71,15 @@ def test_sem_vazamento_entre_conjuntos():
         a = IDRiDPatches(tr[:2], mode="eval"); b = IDRiDPatches(va[:2], mode="eval")
         assert not {i for i, _, _ in a.items} & {i for i, _, _ in b.items}
     assert not set(ids_for("test")) & set(ids_for("train") + ids_for("val"))
+
+
+def test_preprocess_aplicado_apos_augmentation():
+    from src.preprocess import preprocess
+
+    def pp(img):
+        return preprocess(img, "green")
+
+    ds = IDRiDPatches(["IDRiD_03"], mode="train", patches_per_image=3, preprocess=pp, normalize=False)
+    s = ds[0]
+    img = (s["image"].numpy().transpose(1, 2, 0) * 255).round().astype("uint8")
+    assert (img[..., 0] == img[..., 1]).all() and (img[..., 1] == img[..., 2]).all()
