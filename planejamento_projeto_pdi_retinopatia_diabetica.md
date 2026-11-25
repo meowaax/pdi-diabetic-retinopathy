@@ -131,6 +131,8 @@ Página oficial: https://idrid.grand-challenge.org/Data/
 | C: Canal verde | Extrair o canal verde e replicá-lo nos três canais de entrada. | Representação que pode evidenciar estruturas da retina. |
 | D: Combinação (opcional) | Combinar CLAHE e canal verde. | Verificar se as operações têm efeito complementar. |
 
+**Sensibilidade do CLAHE.** Os parâmetros do CLAHE (`clipLimit` e `tileGridSize`) não são fixados a priori. Antes do E2, uma grade pequena (por exemplo, clipLimit 1 a 4 e tile 8×8 e 16×16) é avaliada **somente na validação**, com todo o restante fixo (divisão, augmentation, hiperparâmetros do E1 e semente). A configuração com maior macro-Dice de validação é congelada e usada em E2 e E4. Como RGB e canal verde não passam por esse ajuste, isso é registrado como limitação. Se o melhor parâmetro variar entre classes, a diferença entra na discussão de H2.
+
 ### Etapa 3: Modelo de segmentação
 
 Utilizar **UNet++ com encoder VGG16 pré-treinado** como configuração inicial. Mantém a conexão com o artigo de referência e evita multiplicar o custo computacional com uma comparação extensa de encoders.
@@ -191,7 +193,7 @@ O indicador principal é o Dice por classe, além do macro-Dice (peso igual às 
 | Exp. | Entrada | Pós-processamento | Objetivo |
 |---|---|---|---|
 | E1 | RGB original | Não | Estabelecer baseline. |
-| E2 | CLAHE | Não | Medir efeito do aprimoramento de contraste. |
+| E2 | CLAHE (parâmetros congelados após a sensibilidade) | Não | Medir efeito do aprimoramento de contraste. |
 | E3 | Canal verde | Não | Medir efeito da representação cromática. |
 | E4 (opcional) | CLAHE + canal verde | Não | Avaliar combinação de operações. |
 | E5 (complementar) | Melhor configuração anterior | Sim | Avaliar refinamento morfológico. |
