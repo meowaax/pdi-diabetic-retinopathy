@@ -12,3 +12,4 @@ torchmetrics
 pyyaml
 tqdm
 jupyter
+pytest
