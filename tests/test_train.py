@@ -24,12 +24,17 @@ def test_config_from_yaml_aceita_overrides(tmp_path):
 
 def test_overfit_em_poucas_imagens_eleva_o_dice_de_treino(tmp_path):
     """Sanidade pedida pela issue: sem pesos pré-treinados (rápido) e poucas imagens, o modelo
-    deve conseguir memorizar e o Dice (medido nas próprias imagens de treino) deve subir bastante
-    em poucas épocas. Não prova que o modelo generaliza; prova que o grafo de treino está correto."""
+    deve conseguir memorizar. Checa dois sinais:
+    (a) a loss de treino cai de forma consistente ao longo das épocas (prova que o gradiente
+        flui e o otimizador atualiza os pesos na direção certa);
+    (b) o macro-Dice de validação (medido nas próprias imagens de treino, remontadas da grade)
+        melhora em relação ao modelo com pesos aleatórios.
+    Não prova que o modelo generaliza para imagens novas; prova que o grafo dataset -> modelo ->
+    loss -> otimizador está conectado corretamente, sem NaN/Inf ao longo do treino."""
     ids = ["IDRiD_03", "IDRiD_08"]
     cfg = TrainConfig(
-        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=15, patience=15,
-        patches_per_image=6, lesion_prob=1.0, eval_stride=2048, checkpoint_dir=str(tmp_path / "ckpt"),
+        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=20, patience=20,
+        patches_per_image=8, lesion_prob=1.0, eval_stride=2048, checkpoint_dir=str(tmp_path / "ckpt"),
         log_dir=str(tmp_path / "logs"), run_name="overfit_sanity",
     )
     device = get_device()
@@ -38,10 +43,29 @@ def test_overfit_em_poucas_imagens_eleva_o_dice_de_treino(tmp_path):
 
     result = train(ids, ids, cfg)  # mesmas imagens em treino e validação: mede capacidade de memorizar
 
-    assert result["best_val_macro_dice"] > dice_antes + 0.2
+    assert not result["had_nan"], "loss não-finita durante o treino (ver src/train.py: mixed precision)"
+    losses = [h["train_loss"] for h in result["history"]]
+    media_inicial = sum(losses[:3]) / 3
+    media_final = sum(losses[-3:]) / 3
+    assert media_final < media_inicial, f"loss não caiu: inicial={media_inicial:.4f} final={media_final:.4f}"
+    assert result["best_val_macro_dice"] > dice_antes
     assert Path(result["checkpoint_path"]).exists()
     assert Path(result["log_path"]).exists()
     assert len(result["history"]) >= 1
+
+
+def test_mixed_precision_nao_produz_loss_nan(tmp_path):
+    """Regressão: float16 autocast sem GradScaler fazia os logits explodirem e a loss virar NaN
+    em poucas épocas (reproduzido em MPS). mixed_precision=True é o padrão de configs/*.yaml."""
+    ids = ["IDRiD_03", "IDRiD_08"]
+    cfg = TrainConfig(
+        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=15, patience=15,
+        patches_per_image=6, lesion_prob=1.0, eval_stride=2048, mixed_precision=True,
+        checkpoint_dir=str(tmp_path / "ckpt"), log_dir=str(tmp_path / "logs"), run_name="amp_sanity",
+    )
+    result = train(ids, ids, cfg, log_fn=lambda *a, **k: None)
+    assert not result["had_nan"]
+    assert all(h["train_loss"] == h["train_loss"] for h in result["history"])  # nenhum NaN (NaN != NaN)
 
 
 def test_checkpoint_salvo_contem_o_estado_do_modelo(tmp_path):

@@ -67,8 +67,10 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{args.run_name}.json"
     out_path.write_text(json.dumps(result, indent=2))
+    aviso = " [ATENÇÃO: houve loss não-finita (nan/inf) durante o treino; descarte este resultado]" \
+        if result.get("had_nan") else ""
     print(f"[{args.run_name}] melhor época {result['best_epoch']}, "
-          f"macro-Dice {result['best_val_macro_dice']:.4f} -> {out_path}")
+          f"macro-Dice {result['best_val_macro_dice']:.4f} -> {out_path}{aviso}")
 
 
 if __name__ == "__main__":

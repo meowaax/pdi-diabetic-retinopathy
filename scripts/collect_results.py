@@ -39,6 +39,7 @@ def load_runs(runs_dir: Path = RUNS_DIR, prefix: str = "") -> pd.DataFrame:
             "fold": sel.get("fold"),
             "best_epoch": r.get("best_epoch"),
             "macro_dice": r.get("best_val_macro_dice"),
+            "had_nan": r.get("had_nan", False),
         }
         for cls in CLASSES:
             row[f"dice_{cls}"] = r.get("per_class_dice", {}).get(cls)
@@ -54,7 +55,7 @@ def base_name(run_name: str) -> str:
 
 
 def summarize_subset(df: pd.DataFrame) -> pd.DataFrame:
-    cols = ["run_name", "best_epoch", "macro_dice"] + [f"dice_{c}" for c in CLASSES]
+    cols = ["run_name", "best_epoch", "macro_dice", "had_nan"] + [f"dice_{c}" for c in CLASSES]
     return df[df["mode"] == "subset"][cols].sort_values("macro_dice", ascending=False).reset_index(drop=True)
 
 

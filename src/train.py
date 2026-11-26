@@ -83,14 +83,20 @@ def _make_preprocess(cfg: TrainConfig):
 
 
 @torch.no_grad()
-def evaluate(model, eval_ids, cfg: TrainConfig, device, transform=None) -> tuple[float, dict]:
+def evaluate(model, eval_ids, cfg: TrainConfig, device, transform=None, progress_fn=None) -> tuple[float, dict]:
     """Avalia por imagem completa (patches da grade, remontados), devolve (macro_dice, detalhes).
 
     detalhes["per_class_dice"] vem de rates_from_confusion sobre a mesma matriz de confusão
-    agregada usada no macro_dice (consistência entre a métrica de seleção e o detalhamento)."""
+    agregada usada no macro_dice (consistência entre a métrica de seleção e o detalhamento).
+
+    progress_fn(i, n, image_id), se fornecida, é chamada antes de processar cada imagem — útil
+    para dar visibilidade quando a validação tem muitas imagens (ex.: a grade completa de uma
+    imagem 2848x4288 em patches 512x512 pode levar dezenas de segundos)."""
     model.eval()
     preds, targets, valids = [], [], []
-    for image_id in eval_ids:
+    for i, image_id in enumerate(eval_ids):
+        if progress_fn is not None:
+            progress_fn(i, len(eval_ids), image_id)
         ds = IDRiDPatches([image_id], mode="eval", stride=cfg.eval_stride, min_fov=cfg.eval_min_fov,
                            preprocess=_make_preprocess(cfg), transform=transform)
         if len(ds) == 0:
@@ -143,11 +149,18 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
     ckpt_path = ckpt_dir / f"{cfg.run_name}_best.pt"
     log_path = log_dir / f"{cfg.run_name}.csv"
 
+    # float16 autocast sem GradScaler faz os logits explodirem e a loss virar NaN em poucas
+    # épocas (reproduzido em MPS; é o comportamento documentado do PyTorch para float16 puro).
+    # bfloat16 tem a faixa dinâmica do float32 (só perde mantissa) e não sofre esse overflow,
+    # então não precisa de escala de gradiente — mas só existe autocast de bfloat16 em CPU/CUDA/MPS
+    # recentes, não em todo hardware; se faltar suporte, caímos para float32 (sem amp).
     use_amp = cfg.mixed_precision and device.type in ("cuda", "mps")
-    amp_dtype = torch.float16
+    amp_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
+    scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and device.type == "cuda"))
 
     best_dice, best_epoch, epochs_no_improve = -1.0, -1, 0
     history = []
+    had_nan = False
     with open(log_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["epoch", "train_loss", "val_macro_dice", "seconds", "is_best"])
@@ -157,7 +170,8 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
             model.train()
             t0 = time.time()
             losses = []
-            for batch in loader:
+            n_batches = len(loader)
+            for b, batch in enumerate(loader):
                 x = batch["image"].to(device)
                 y = batch["mask"].to(device)
                 v = batch["valid"].to(device)
@@ -166,14 +180,32 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
                     with torch.autocast(device_type=device.type, dtype=amp_dtype):
                         logits = model(x)
                         loss = bce_dice_loss(logits, y, v, bce_weight=cfg.bce_weight)
+                    if device.type == "cuda":
+                        scaler.scale(loss).backward()
+                        scaler.step(optim)
+                        scaler.update()
+                    else:
+                        loss.backward()
+                        optim.step()
                 else:
                     logits = model(x)
                     loss = bce_dice_loss(logits, y, v, bce_weight=cfg.bce_weight)
-                loss.backward()
-                optim.step()
-                losses.append(loss.item())
+                    loss.backward()
+                    optim.step()
+                loss_value = loss.item()
+                if not np.isfinite(loss_value):
+                    had_nan = True
+                    log_fn(f"[{cfg.run_name}] ATENÇÃO: loss não-finita (nan/inf) na época {epoch}, "
+                           f"batch {b + 1}. Resultado deste run deve ser descartado.")
+                losses.append(loss_value)
+                if (b + 1) % max(1, n_batches // 4) == 0 or b + 1 == n_batches:
+                    log_fn(f"[{cfg.run_name}] época {epoch}: treino batch {b + 1}/{n_batches} "
+                           f"(loss médio até aqui: {np.mean(losses):.4f})")
 
-            val_dice, _ = evaluate(model, val_ids, cfg, device, transform=None)
+            def _eval_progress(i, n, image_id):
+                log_fn(f"[{cfg.run_name}] época {epoch}: validando imagem {i + 1}/{n} ({image_id})")
+
+            val_dice, _ = evaluate(model, val_ids, cfg, device, transform=None, progress_fn=_eval_progress)
             is_best = val_dice > best_dice
             if is_best:
                 best_dice, best_epoch, epochs_no_improve = val_dice, epoch, 0
@@ -196,4 +228,4 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
                 break
 
     return {"best_epoch": best_epoch, "best_val_macro_dice": best_dice, "checkpoint_path": str(ckpt_path),
-            "log_path": str(log_path), "history": history}
+            "log_path": str(log_path), "history": history, "had_nan": had_nan}
