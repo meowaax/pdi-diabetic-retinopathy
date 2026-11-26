@@ -148,7 +148,7 @@ class IDRiDPatches(Dataset):
         masks, _ = _unpack(np.asarray(self._lab[image_id][y:y + P, x:x + P]))
         masks = np.ascontiguousarray(masks)
         if self.transform is not None:
-            out = self.transform(image=img, mask=masks)
+            out = self.transform(image=img, mask=masks)  # ver src/augment.py: A.Compose(image=, mask=) -> dict
             img, masks = out["image"], out["mask"]
         if self.preprocess is not None:
             img = self.preprocess(img)
