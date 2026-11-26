@@ -1,0 +1,31 @@
+# Gerado por scripts/make_clahe_grid.py (issue #24). NAO editar manualmente aqui;
+# edite a grade no script e regere. Herda configs/train_default.yaml; lr/batch_size
+# etc. sao placeholders ate o E1 (#13) congelar os hiperparametros reais.
+seed: 42
+preprocess_mode: clahe
+model:
+  encoder_weights: imagenet
+optim:
+  name: adam
+  lr: 0.001
+  batch_size: 6
+loss:
+  bce_weight: 0.5
+train:
+  max_epochs: 100
+  patience: 10
+  patches_per_image: 24
+  lesion_prob: 0.7
+  num_workers: 0
+  mixed_precision: true
+eval:
+  stride: 256
+  min_fov: 0.2
+paths:
+  checkpoint_dir: results/checkpoints
+  log_dir: results/logs
+preprocess_params:
+  clip_limit: 2.0
+  tile_grid_size:
+  - 16
+  - 16
