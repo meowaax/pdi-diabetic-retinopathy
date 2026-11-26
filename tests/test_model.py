@@ -33,10 +33,18 @@ def test_predict_proba_fica_em_0_1():
 
 
 def test_batch_1_a_8_cabe_em_512x512_na_gpu_disponivel():
+    """Cada batch é testado isoladamente, com no_grad e liberação explícita de memória entre eles:
+    sem isso, as ativações retidas para o backward (que este teste não faz) se acumulam de um
+    batch para o outro e podem estourar a VRAM mesmo quando cada batch, por si só, caberia."""
     device = get_device()
     model = build_model(encoder_weights=None).to(device)
     for b in (1, 4, 8):
-        x = torch.randn(b, 3, 512, 512, device=device)
-        logits = model(x)
-        assert logits.shape == (b, 4, 512, 512)
+        with torch.no_grad():
+            x = torch.randn(b, 3, 512, 512, device=device)
+            logits = model(x)
+            assert logits.shape == (b, 4, 512, 512)
         del logits, x
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        elif device.type == "mps":
+            torch.mps.empty_cache()
