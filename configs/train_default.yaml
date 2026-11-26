@@ -1,0 +1,31 @@
+# Configuração de treino padrão (issue #12). Pontos de partida do artigo de referência e do
+# planejamento (não são definitivos; ajustar na validação, nunca no teste — ver #13 para o E1).
+seed: 42
+preprocess_mode: rgb        # rgb | clahe | green | clahe_green (ver src/preprocess.py)
+
+model:
+  encoder_weights: imagenet
+
+optim:
+  name: adam
+  lr: 0.001
+  batch_size: 6              # valor do artigo; cai para 4 se a GPU não comportar (ver #9)
+
+loss:
+  bce_weight: 0.5            # combinação convexa BCE + Dice (src/losses.py)
+
+train:
+  max_epochs: 100
+  patience: 10                # early stopping: épocas sem melhora do macro-Dice de validação
+  patches_per_image: 24       # amostragem enviesada a lesão (src/patches.py)
+  lesion_prob: 0.7
+  num_workers: 0
+  mixed_precision: true
+
+eval:
+  stride: 256                 # grade determinística (src/patches.py)
+  min_fov: 0.2
+
+paths:
+  checkpoint_dir: results/checkpoints
+  log_dir: results/logs
