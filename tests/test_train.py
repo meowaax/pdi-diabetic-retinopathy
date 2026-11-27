@@ -14,6 +14,7 @@ pytestmark = pytest.mark.skipif(not Path("data/cache/IDRiD_01_meta.npz").exists(
 def test_config_from_yaml_le_o_arquivo_padrao():
     cfg = TrainConfig.from_yaml("configs/train_default.yaml", run_name="teste")
     assert cfg.lr == 0.001 and cfg.batch_size == 6 and cfg.patience == 10 and cfg.max_epochs == 100
+    assert cfg.micro_batch_size == 2
     assert cfg.run_name == "teste"
 
 
@@ -73,6 +74,34 @@ def test_mixed_precision_e_ignorado_com_aviso_em_vez_de_produzir_nan(tmp_path):
     assert not result["had_nan"]
     assert all(h["train_loss"] == h["train_loss"] for h in result["history"])  # nenhum NaN (NaN != NaN)
     assert any("ignorado" in m for m in msgs), "deveria avisar que mixed_precision foi ignorado"
+
+
+def test_micro_batch_size_menor_que_batch_size_nao_quebra_e_nao_gera_nan(tmp_path):
+    """Regressão: batch_size=6 sem mixed precision causou OOM real numa T4 (16GB). Com
+    micro_batch_size < batch_size, cada passo do otimizador deve processar sub-batches menores
+    via gradient accumulation (ver src/train.py), mantendo o grafo de treino funcional."""
+    ids = ["IDRiD_03", "IDRiD_08"]
+    cfg = TrainConfig(
+        encoder_weights=None, lr=1e-3, batch_size=4, micro_batch_size=1, max_epochs=3, patience=3,
+        patches_per_image=4, lesion_prob=1.0, eval_stride=2048,
+        checkpoint_dir=str(tmp_path / "ckpt"), log_dir=str(tmp_path / "logs"), run_name="microbatch_sanity",
+    )
+    result = train(ids, ids, cfg, log_fn=lambda *a, **k: None)
+    assert not result["had_nan"]
+    assert len(result["history"]) >= 1
+
+
+def test_micro_batch_size_maior_que_batch_size_e_tratado_como_igual(tmp_path):
+    """micro_batch_size não deve ultrapassar batch_size (não há sentido em processar mais de uma
+    vez só do que o próprio batch lógico)."""
+    ids = ["IDRiD_03"]
+    cfg = TrainConfig(
+        encoder_weights=None, batch_size=2, micro_batch_size=10, max_epochs=1, patience=1,
+        patches_per_image=2, eval_stride=2048, checkpoint_dir=str(tmp_path / "ckpt"),
+        log_dir=str(tmp_path / "logs"), run_name="microbatch_cap_sanity",
+    )
+    result = train(ids, ids, cfg, log_fn=lambda *a, **k: None)
+    assert not result["had_nan"]
 
 
 def test_checkpoint_salvo_contem_o_estado_do_modelo(tmp_path):

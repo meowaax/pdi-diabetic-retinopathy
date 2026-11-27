@@ -53,9 +53,12 @@ nb.cells = [
        "Cada treino usa a divisão de desenvolvimento (42 treino / 12 validação). "
        "Roda uma configuração por vez, mostrando o progresso época a época; "
        "se a sessão cair, repita a célula — ela pula as configurações que já têm resultado salvo.\n\n"
-       "**Nota:** o log deve mostrar uma linha `mixed_precision=True ignorado: ...`. Isso é "
+       "**Nota 1:** o log deve mostrar uma linha `mixed_precision=True ignorado: ...`. Isso é "
        "esperado: mixed precision foi desativado porque causou `loss=nan` de forma persistente "
-       "em testes (ver `src/train.py`). O treino roda em precisão total (mais lento, mas correto)."),
+       "em testes (ver `src/train.py`). O treino roda em precisão total (mais lento, mas correto).\n\n"
+       "**Nota 2:** `configs/train_default.yaml` usa `micro_batch_size: 2` (o `batch_size: 6` do "
+       "artigo é só o tamanho lógico; o restante é obtido por gradient accumulation). Se ainda "
+       "ocorrer `CUDACachingAllocator ... OOM`, adicione `--micro-batch-size 1` no comando abaixo."),
     code("import glob\n"
          "configs = sorted(glob.glob('configs/clahe_grid/*.yaml'))\n"
          "print(f'{len(configs)} configurações:')\n"

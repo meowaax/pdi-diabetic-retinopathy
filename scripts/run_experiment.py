@@ -36,6 +36,9 @@ def main() -> None:
     group.add_argument("--fold", type=int, help="usa a dobra K (0-4) da validação cruzada")
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--max-epochs", type=int, default=None, help="override de max_epochs (ex.: smoke test)")
+    parser.add_argument("--micro-batch-size", type=int, default=None,
+                         help="override de micro_batch_size (tamanho real processado por vez na GPU; "
+                              "diminua se houver OOM, ex.: 1)")
     args = parser.parse_args()
 
     if args.subset:
@@ -46,6 +49,8 @@ def main() -> None:
     overrides = {}
     if args.max_epochs is not None:
         overrides["max_epochs"] = args.max_epochs
+    if args.micro_batch_size is not None:
+        overrides["micro_batch_size"] = args.micro_batch_size
     cfg = TrainConfig.from_yaml(args.config, run_name=args.run_name, **overrides)
 
     print(f"[{args.run_name}] treino={len(train_ids)} imagens, validação={len(val_ids)} imagens, "

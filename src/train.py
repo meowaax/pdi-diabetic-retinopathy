@@ -35,6 +35,7 @@ class TrainConfig:
     encoder_weights: str | None = "imagenet"
     lr: float = 1e-3
     batch_size: int = 6
+    micro_batch_size: int | None = None  # None = igual a batch_size (sem acumulação de gradiente)
     bce_weight: float = 0.5
     max_epochs: int = 100
     patience: int = 10
@@ -58,6 +59,7 @@ class TrainConfig:
             "encoder_weights": raw.get("model", {}).get("encoder_weights", "imagenet"),
             "lr": raw.get("optim", {}).get("lr", 1e-3),
             "batch_size": raw.get("optim", {}).get("batch_size", 6),
+            "micro_batch_size": raw.get("optim", {}).get("micro_batch_size"),
             "bce_weight": raw.get("loss", {}).get("bce_weight", 0.5),
             "max_epochs": raw.get("train", {}).get("max_epochs", 100),
             "patience": raw.get("train", {}).get("patience", 10),
@@ -101,9 +103,10 @@ def evaluate(model, eval_ids, cfg: TrainConfig, device, transform=None, progress
                            preprocess=_make_preprocess(cfg), transform=transform)
         if len(ds) == 0:
             continue
+        eval_bs = cfg.micro_batch_size or cfg.batch_size
         logits_list, masks_list, positions = [], [], []
-        for i in range(0, len(ds), cfg.batch_size):
-            batch = [ds[j] for j in range(i, min(i + cfg.batch_size, len(ds)))]
+        for i in range(0, len(ds), eval_bs):
+            batch = [ds[j] for j in range(i, min(i + eval_bs, len(ds)))]
             x = torch.stack([b["image"] for b in batch]).to(device)
             logits_list.append(model(x).cpu().numpy())
             masks_list += [b["mask"].numpy() for b in batch]
@@ -137,6 +140,17 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
     device = get_device()
     model = build_model(encoder_weights=cfg.encoder_weights).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=cfg.lr)
+
+    # micro_batch_size separa o tamanho lógico do batch (usado para o passo do otimizador) do
+    # tamanho real processado de uma vez pela GPU. Sem isso, um batch_size que não cabe na
+    # memória (ex.: 6 patches 512x512 em float32, sem mixed precision) causa OOM — reproduzido
+    # em CUDA/T4 real. Com gradient accumulation, cada micro-batch faz backward (acumulando
+    # gradiente) e o optim.step() só ocorre depois de somar os gradientes do batch lógico inteiro,
+    # o que é matematicamente equivalente a rodar o batch grande de uma vez (a menos de BatchNorm,
+    # que a UNet++/VGG16 usa; a diferença é pequena na prática e aceitável para viabilizar o treino).
+    micro_bs = cfg.micro_batch_size or cfg.batch_size
+    micro_bs = min(micro_bs, cfg.batch_size)
+    n_micro_per_batch = max(1, -(-cfg.batch_size // micro_bs))  # ceil
 
     train_ds = IDRiDPatches(train_ids, mode="train", patches_per_image=cfg.patches_per_image,
                              lesion_prob=cfg.lesion_prob, preprocess=_make_preprocess(cfg),
@@ -178,27 +192,35 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
             losses = []
             n_batches = len(loader)
             for b, batch in enumerate(loader):
-                x = batch["image"].to(device)
-                y = batch["mask"].to(device)
-                v = batch["valid"].to(device)
+                x_full = batch["image"].to(device)
+                y_full = batch["mask"].to(device)
+                v_full = batch["valid"].to(device)
+                n = x_full.shape[0]
                 optim.zero_grad()
-                if use_amp:
-                    with torch.autocast(device_type=device.type, dtype=amp_dtype):
+                batch_losses = []
+                for s in range(0, n, micro_bs):
+                    x, y, v = x_full[s:s + micro_bs], y_full[s:s + micro_bs], v_full[s:s + micro_bs]
+                    weight = x.shape[0] / n  # pondera pelo tamanho real do micro-batch (último pode ser menor)
+                    if use_amp:
+                        with torch.autocast(device_type=device.type, dtype=amp_dtype):
+                            logits = model(x)
+                            loss = bce_dice_loss(logits, y, v, bce_weight=cfg.bce_weight)
+                        scaled_loss = loss * weight
+                        if device.type == "cuda":
+                            scaler.scale(scaled_loss).backward()
+                        else:
+                            scaled_loss.backward()
+                    else:
                         logits = model(x)
                         loss = bce_dice_loss(logits, y, v, bce_weight=cfg.bce_weight)
-                    if device.type == "cuda":
-                        scaler.scale(loss).backward()
-                        scaler.step(optim)
-                        scaler.update()
-                    else:
-                        loss.backward()
-                        optim.step()
+                        (loss * weight).backward()
+                    batch_losses.append(loss.item())
+                if use_amp and device.type == "cuda":
+                    scaler.step(optim)
+                    scaler.update()
                 else:
-                    logits = model(x)
-                    loss = bce_dice_loss(logits, y, v, bce_weight=cfg.bce_weight)
-                    loss.backward()
                     optim.step()
-                loss_value = loss.item()
+                loss_value = float(np.mean(batch_losses))
                 if not np.isfinite(loss_value):
                     had_nan = True
                     log_fn(f"[{cfg.run_name}] ATENÇÃO: loss não-finita (nan/inf) na época {epoch}, "

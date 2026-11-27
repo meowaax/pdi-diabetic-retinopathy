@@ -9,7 +9,12 @@ model:
 optim:
   name: adam
   lr: 0.001
-  batch_size: 6              # valor do artigo; cai para 4 se a GPU não comportar (ver #9)
+  batch_size: 6              # valor do artigo (tamanho lógico; ver micro_batch_size)
+  # Tamanho real processado de uma vez pela GPU; o restante do batch_size lógico é obtido por
+  # gradient accumulation (src/train.py). batch_size=6 sem mixed precision (ver train.mixed_precision
+  # abaixo) causou OOM mesmo numa T4 de 16GB (confirmado em execução real no Colab). Comece com 2
+  # e aumente se a GPU usada tiver mais memória livre; None usaria batch_size inteiro de uma vez.
+  micro_batch_size: 2
 
 loss:
   bce_weight: 0.5            # combinação convexa BCE + Dice (src/losses.py)

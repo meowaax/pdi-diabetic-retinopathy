@@ -9,6 +9,7 @@ optim:
   name: adam
   lr: 0.001
   batch_size: 6
+  micro_batch_size: 2
 loss:
   bce_weight: 0.5
 train:
