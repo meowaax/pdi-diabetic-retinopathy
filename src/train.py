@@ -149,14 +149,20 @@ def train(train_ids, val_ids, cfg: TrainConfig, transform=None, log_fn=print) ->
     ckpt_path = ckpt_dir / f"{cfg.run_name}_best.pt"
     log_path = log_dir / f"{cfg.run_name}.csv"
 
-    # float16 autocast sem GradScaler faz os logits explodirem e a loss virar NaN em poucas
-    # épocas (reproduzido em MPS; é o comportamento documentado do PyTorch para float16 puro).
-    # bfloat16 tem a faixa dinâmica do float32 (só perde mantissa) e não sofre esse overflow,
-    # então não precisa de escala de gradiente — mas só existe autocast de bfloat16 em CPU/CUDA/MPS
-    # recentes, não em todo hardware; se faltar suporte, caímos para float32 (sem amp).
-    use_amp = cfg.mixed_precision and device.type in ("cuda", "mps")
-    amp_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
-    scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and device.type == "cuda"))
+    # Mixed precision é desligado por padrão: tanto float16 quanto bfloat16 produziram loss NaN
+    # de forma persistente em testes (MPS e, segundo relato de execução real, também CUDA/T4),
+    # já na forward (ativações do modelo com pesos aleatórios/VGG16 excedem o range de float16
+    # dentro de camadas intermediárias, antes mesmo do GradScaler atuar sobre o gradiente —
+    # GradScaler só protege contra overflow no gradiente durante o backward, não numa forward que
+    # já nasce NaN). Reabilitar exige validar em hardware real (Ampere+ para bfloat16 acelerado em
+    # CUDA; GPUs mais antigas como a T4 só têm float16 acelerado) e, se usar float16, aplicar
+    # gradient clipping além do GradScaler.
+    use_amp = False
+    amp_dtype = torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
+    if cfg.mixed_precision:
+        log_fn(f"[{cfg.run_name}] mixed_precision=True ignorado: amp causou loss NaN em testes "
+               f"anteriores (ver src/train.py); treinando em precisão total até isso ser corrigido.")
 
     best_dice, best_epoch, epochs_no_improve = -1.0, -1, 0
     history = []

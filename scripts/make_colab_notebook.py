@@ -52,7 +52,10 @@ nb.cells = [
     md("## 5. Sensibilidade do CLAHE (issue #24): as 8 configurações\n\n"
        "Cada treino usa a divisão de desenvolvimento (42 treino / 12 validação). "
        "Roda uma configuração por vez, mostrando o progresso época a época; "
-       "se a sessão cair, repita a célula — ela pula as configurações que já têm resultado salvo."),
+       "se a sessão cair, repita a célula — ela pula as configurações que já têm resultado salvo.\n\n"
+       "**Nota:** o log deve mostrar uma linha `mixed_precision=True ignorado: ...`. Isso é "
+       "esperado: mixed precision foi desativado porque causou `loss=nan` de forma persistente "
+       "em testes (ver `src/train.py`). O treino roda em precisão total (mais lento, mas correto)."),
     code("import glob\n"
          "configs = sorted(glob.glob('configs/clahe_grid/*.yaml'))\n"
          "print(f'{len(configs)} configurações:')\n"

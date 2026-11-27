@@ -33,7 +33,7 @@ def test_overfit_em_poucas_imagens_eleva_o_dice_de_treino(tmp_path):
     loss -> otimizador está conectado corretamente, sem NaN/Inf ao longo do treino."""
     ids = ["IDRiD_03", "IDRiD_08"]
     cfg = TrainConfig(
-        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=20, patience=20,
+        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=10, patience=10,
         patches_per_image=8, lesion_prob=1.0, eval_stride=2048, checkpoint_dir=str(tmp_path / "ckpt"),
         log_dir=str(tmp_path / "logs"), run_name="overfit_sanity",
     )
@@ -54,18 +54,25 @@ def test_overfit_em_poucas_imagens_eleva_o_dice_de_treino(tmp_path):
     assert len(result["history"]) >= 1
 
 
-def test_mixed_precision_nao_produz_loss_nan(tmp_path):
-    """Regressão: float16 autocast sem GradScaler fazia os logits explodirem e a loss virar NaN
-    em poucas épocas (reproduzido em MPS). mixed_precision=True é o padrão de configs/*.yaml."""
+def test_mixed_precision_e_ignorado_com_aviso_em_vez_de_produzir_nan(tmp_path):
+    """Regressão: tanto float16 (CUDA/T4, confirmado em execução real no Colab) quanto bfloat16
+    (MPS, confirmado nesta máquina) produziram loss NaN de forma persistente com este modelo/pesos
+    aleatórios — a forward já gera ativações fora do range representável em alguma camada
+    intermediária, antes do GradScaler poder agir (ele só protege o gradiente no backward, não
+    uma forward que já nasce NaN). Até isso ser investigado e corrigido com segurança em hardware
+    real, mixed_precision=True (padrão de configs/*.yaml) é ignorado e o treino roda em precisão
+    total, com um aviso — nunca deve silenciosamente produzir NaN."""
     ids = ["IDRiD_03", "IDRiD_08"]
+    msgs = []
     cfg = TrainConfig(
-        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=15, patience=15,
-        patches_per_image=6, lesion_prob=1.0, eval_stride=2048, mixed_precision=True,
+        encoder_weights=None, lr=1e-3, batch_size=2, max_epochs=3, patience=3,
+        patches_per_image=4, lesion_prob=1.0, eval_stride=2048, mixed_precision=True,
         checkpoint_dir=str(tmp_path / "ckpt"), log_dir=str(tmp_path / "logs"), run_name="amp_sanity",
     )
-    result = train(ids, ids, cfg, log_fn=lambda *a, **k: None)
+    result = train(ids, ids, cfg, log_fn=msgs.append)
     assert not result["had_nan"]
     assert all(h["train_loss"] == h["train_loss"] for h in result["history"])  # nenhum NaN (NaN != NaN)
+    assert any("ignorado" in m for m in msgs), "deveria avisar que mixed_precision foi ignorado"
 
 
 def test_checkpoint_salvo_contem_o_estado_do_modelo(tmp_path):

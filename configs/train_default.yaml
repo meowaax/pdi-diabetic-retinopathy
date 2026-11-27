@@ -20,6 +20,10 @@ train:
   patches_per_image: 24       # amostragem enviesada a lesão (src/patches.py)
   lesion_prob: 0.7
   num_workers: 0
+  # NOTA: atualmente ignorado por src/train.py (loga um aviso). float16 e bfloat16 produziram
+  # loss NaN de forma persistente neste modelo com pesos aleatórios (reproduzido em MPS e em
+  # CUDA/T4 real). Deixado como true para registrar a intenção original do planejamento; só
+  # terá efeito depois de a causa ser corrigida com segurança (ver src/train.py).
   mixed_precision: true
 
 eval:
